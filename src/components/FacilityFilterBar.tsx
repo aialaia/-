@@ -1,6 +1,6 @@
 import React from 'react';
 import { FacilityCategory } from '../types';
-import { Elevator, Strikethrough, AlertTriangle, Layers, Eye } from 'lucide-react';
+import { Strikethrough, AlertTriangle, Layers, Eye } from 'lucide-react';
 
 interface FacilityFilterBarProps {
   selectedCategory: FacilityCategory | 'all';

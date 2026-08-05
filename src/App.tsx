@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import L from 'leaflet';
-import { LocateFixed } from 'lucide-react';
+import { LocateFixed, Megaphone } from 'lucide-react';
 import { SearchPanel } from './components/SearchPanel';
 import { RouteResultPanel } from './components/RouteResultPanel';
 import { NavOverlay } from './components/NavOverlay';
 import { ReportModal } from './components/ReportModal';
+import { ReportListModal } from './components/ReportListModal';
 import { PermissionModal } from './components/PermissionModal';
 import { ToastContainer, ToastMessage } from './components/Toast';
 import { FacilityFilterBar } from './components/FacilityFilterBar';
-import { TransitOption, AccessibilityFacility, FacilityCategory } from './types';
+import { TransitOption, AccessibilityFacility, FacilityCategory, ObstacleReport, Coordinates } from './types';
 import { speak } from './utils/speech';
 
 // Custom Leaflet Icons
@@ -85,12 +86,61 @@ export default function App() {
   const currentPosMarkerRef = useRef<L.Marker | null>(null);
   const routeLayersRef = useRef<L.Polyline[]>([]);
   const facilityMarkersRef = useRef<L.Marker[]>([]);
+  const reportMarkersRef = useRef<L.Marker[]>([]);
   const navWatchIdRef = useRef<number | null>(null);
 
   // Coordinates state
   const [startCoords, setStartCoords] = useState<L.LatLng | null>(null);
   const [endCoords, setEndCoords] = useState<L.LatLng | null>(null);
   const [currentCoords, setCurrentCoords] = useState<L.LatLng | null>(null);
+
+  // Community Reports State
+  const [reports, setReports] = useState<ObstacleReport[]>([
+    {
+      id: 'rep-1',
+      latlng: { lat: 37.5559, lng: 126.9723 },
+      locationName: '서울역 1번 출구 엘리베이터 앞',
+      status: 'no',
+      issueType: '엘리베이터 고장/미작동',
+      description: '엘리베이터 정기 점검 중으로 운영 중단됨. 2번 출구 측 엘리베이터 이용 권장합니다.',
+      nickname: '따뜻한휠체어',
+      timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+      likes: 14,
+    },
+    {
+      id: 'rep-2',
+      latlng: { lat: 37.5662, lng: 126.9778 },
+      locationName: '시청역 2번 출구 보입 진입로',
+      status: 'no',
+      issueType: '높은 단차/계단 있음',
+      description: '횡단보도 앞 경계석 단차가 약 4cm 정도로 수동휠체어 넘어짐 주의 필요.',
+      nickname: '배리어프리나비',
+      timestamp: new Date(Date.now() - 3600000 * 5).toISOString(),
+      likes: 8,
+    },
+    {
+      id: 'rep-3',
+      latlng: { lat: 37.5701, lng: 126.991 },
+      locationName: '종로3가역 3번 출구 엘리베이터',
+      status: 'yes',
+      issueType: '기타 편의시설 설치완료',
+      description: '신규 엘리베이터 공사 완료 후 정상 가동 시작! 승강장 직통이라 매우 편리함.',
+      nickname: '모두의길',
+      timestamp: new Date(Date.now() - 3600000 * 12).toISOString(),
+      likes: 23,
+    },
+    {
+      id: 'rep-4',
+      latlng: { lat: 37.5609, lng: 126.9863 },
+      locationName: '명동역 5번 출구 앞 보도',
+      status: 'no',
+      issueType: '통행 방해물/무단주차',
+      description: '상가 자재 불법 적재로 보도 폭 80cm 이하 축소됨. 우회 필요.',
+      nickname: '안전보행',
+      timestamp: new Date(Date.now() - 3600000 * 24).toISOString(),
+      likes: 5,
+    },
+  ]);
 
   // Input state
   const [startInput, setStartInput] = useState('');
@@ -112,6 +162,7 @@ export default function App() {
 
   // Modals state
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isReportListModalOpen, setIsReportListModalOpen] = useState(false);
   const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
 
   // Helper: Toast display
@@ -212,6 +263,72 @@ export default function App() {
       facilityMarkersRef.current.push(marker);
     });
   }, []);
+
+  // Render Community Reports on Map
+  const renderReportMarkers = useCallback((reportList: ObstacleReport[]) => {
+    if (!mapRef.current) return;
+
+    reportMarkersRef.current.forEach((m) => m.remove());
+    reportMarkersRef.current = [];
+
+    reportList.forEach((rep) => {
+      const isObstacle = rep.status === 'no';
+      const icon = isObstacle
+        ? warnIcon
+        : L.divIcon({
+            html: '<div class="bg-emerald-600 text-white rounded-full w-8 h-8 flex items-center justify-center border-2 border-white shadow-md text-sm"><i class="fa-solid fa-check"></i></div>',
+            className: 'bg-transparent',
+            iconSize: [32, 32],
+            iconAnchor: [16, 16],
+          });
+
+      const marker = L.marker([rep.latlng.lat, rep.latlng.lng], { icon, zIndexOffset: 900 })
+        .bindPopup(`
+          <div class="p-1.5 max-w-[240px]">
+            <div class="font-extrabold text-xs text-gray-900 mb-1 flex items-center justify-between gap-1">
+              <span class="truncate">📍 ${rep.locationName}</span>
+              <span class="text-[10px] px-1.5 py-0.5 rounded font-extrabold shrink-0 ${
+                isObstacle ? 'bg-red-100 text-red-700' : 'bg-emerald-100 text-emerald-700'
+              }">
+                ${isObstacle ? '불편' : '원활'}
+              </span>
+            </div>
+            ${
+              rep.issueType
+                ? `<div class="text-[11px] font-bold text-blue-600 mb-1">${rep.issueType}</div>`
+                : ''
+            }
+            ${
+              rep.description
+                ? `<div class="text-[11px] text-gray-700 leading-snug mb-1.5 bg-gray-50 p-1.5 rounded border border-gray-100">${rep.description}</div>`
+                : ''
+            }
+            <div class="text-[10px] text-gray-500 mt-1 flex justify-between items-center pt-1 border-t border-gray-100">
+              <span>제보자: ${rep.nickname || '익명'}</span>
+              <span class="font-bold text-amber-600">👍 ${rep.likes || 0}</span>
+            </div>
+          </div>
+        `)
+        .addTo(mapRef.current!);
+
+      marker.on('click', () => {
+        speak(
+          `${rep.locationName}. ${isObstacle ? '장애물 불편 제보' : '원활 제보'}. ${rep.issueType || ''}. ${
+            rep.description || ''
+          }`
+        );
+      });
+
+      reportMarkersRef.current.push(marker);
+    });
+  }, []);
+
+  // Sync report markers when reports array changes
+  useEffect(() => {
+    if (mapRef.current) {
+      renderReportMarkers(reports);
+    }
+  }, [reports, renderReportMarkers]);
 
   // Handle Geolocation Error
   const handleLocationError = useCallback(
@@ -602,6 +719,65 @@ export default function App() {
           ],
           features: ['엘리베이터 2개소', '에스컬레이터 1개소', '완만 경사 2.1%', '점자판 연동'],
           facilities: facilitiesSubway,
+          detailedLegs: [
+            {
+              id: 'leg-sub-1',
+              type: 'walk',
+              title: '출발지 → 시청역 1번 출구 도보 이동',
+              subtitle: '약 280m (약 4분 소요)',
+              description: '계단이 전혀 없는 평탄한 보도를 통해 이동합니다.',
+              locationName: '출발지',
+              facilitiesIncluded: {
+                brailleInfo: '보도 중앙 시각장애인 유도 점자블록 연속 설치',
+              },
+            },
+            {
+              id: 'leg-sub-2',
+              type: 'elevator',
+              title: '시청역 1번 출구 엘리베이터 이용 지하 대합실 이동',
+              subtitle: '지상 1층 ↔ 지하 2층 직통',
+              locationName: '시청역 1번 출구',
+              exitNumber: '1번 출구',
+              facilitiesIncluded: {
+                elevatorName: '시청역 1호기 엘리베이터',
+                elevatorStatus: '정상 운행중',
+                brailleInfo: '엘리베이터 버튼 점자 및 음성 안내 연동',
+              },
+            },
+            {
+              id: 'leg-sub-3',
+              type: 'transit_ride',
+              title: '수도권 1호선 탑승 (소요산/청량리 방면)',
+              subtitle: '2개 역 이동 (약 6분 소요)',
+              transitLineName: '수도권 1호선',
+              lineColor: 'bg-blue-600 text-white',
+              locationName: '시청역 승강장',
+              passedStations: ['시청역 (승차)', '종각역 (경유)', '종로3가역 (하차)'],
+              wheelchairPosition: '휠체어/유모차 전용 탑승위치 1-1 및 10-4',
+              description: '전동차-승강장 간격 5cm 이내로 휠체어 안전 탑승 가능 구역',
+            },
+            {
+              id: 'leg-sub-4',
+              type: 'alight',
+              title: '종로3가역 하차 및 3번 출구 엘리베이터 이용 지상 이동',
+              subtitle: '지하 2층 승강장 ↔ 지상 1층 직통',
+              locationName: '종로3가역',
+              exitNumber: '3번 출구',
+              facilitiesIncluded: {
+                elevatorName: '종로3가역 3번 출구 엘리베이터',
+                elevatorStatus: '정상 운행중',
+                brailleInfo: '하차 게이트 점자판 및 촉지도 안내',
+              },
+            },
+            {
+              id: 'leg-sub-5',
+              type: 'walk',
+              title: '종로3가역 3번 출구 → 목적지 도착',
+              subtitle: '약 210m (약 3분 소요)',
+              description: '횡단보도 경계석 턱 낮춤 시공 완료 구간 (단차 1.5cm 미만)',
+              locationName: '목적지',
+            },
+          ],
         },
         {
           id: 'bus',
@@ -619,6 +795,45 @@ export default function App() {
           ],
           features: ['경사로 전개 가능', '버스 점자판', '보도 단차 2.5cm'],
           facilities: facilitiesBus,
+          detailedLegs: [
+            {
+              id: 'leg-bus-1',
+              type: 'walk',
+              title: '출발지 → 시청.덕수궁 버스정류장 이동',
+              subtitle: '약 180m (약 3분 소요)',
+              description: '평지 보행로 이용',
+              locationName: '출발지',
+            },
+            {
+              id: 'leg-bus-2',
+              type: 'transit_ride',
+              title: '간선 143번 (저상버스) 탑승',
+              subtitle: '3개 정류장 이동 (약 9분 소요)',
+              transitLineName: '간선 143번',
+              lineColor: 'bg-emerald-600 text-white',
+              locationName: '시청.덕수궁 정류장 (ID: 02-132)',
+              passedStations: ['시청.덕수궁 (승차)', '롯데백화점 (경유)', '명동입구 (경유)', '퇴계로2가.명동역 (하차)'],
+              wheelchairPosition: '중문 휠체어 슬로프 리프트 자동 탑재',
+              facilitiesIncluded: {
+                brailleInfo: '정류장 실시간 버스도착안내 단말기 음성안내 연동',
+              },
+            },
+            {
+              id: 'leg-bus-3',
+              type: 'alight',
+              title: '퇴계로2가.명동역 정류장 하차',
+              locationName: '퇴계로2가.명동역 정류장',
+              description: '하차 시 기사님 휠체어 발판 리프트 보조',
+            },
+            {
+              id: 'leg-bus-4',
+              type: 'walk',
+              title: '정류장 → 목적지 최종 이동',
+              subtitle: '약 320m (약 5분 소요)',
+              description: '보행로 경사도 1.8% 완만 구간',
+              locationName: '목적지',
+            },
+          ],
         },
       ];
       setTransitOptions(options);
@@ -641,6 +856,34 @@ export default function App() {
           ],
           features: ['완만한 경사(1.5%)', '연속 점자블록', '단차 최소화'],
           facilities: facilitiesWalk,
+          detailedLegs: [
+            {
+              id: 'leg-walk-1',
+              type: 'walk',
+              title: '출발지 → 보도 진입로',
+              subtitle: '평지 구간 (경사 1.0%)',
+              description: '턱이 없으며 휠체어 및 유모차 교행 가능한 2m 폭 보도',
+              locationName: '출발지',
+            },
+            {
+              id: 'leg-walk-2',
+              type: 'braille',
+              title: '중앙 보행로 점자블록 가이드 구간',
+              subtitle: '연속 설치 구간',
+              description: '시각장애인 유도점자블록을 따라 직선 이동',
+              facilitiesIncluded: {
+                brailleInfo: '선형 점자블록 및 횡단보도 앞 점형 점자블록',
+              },
+            },
+            {
+              id: 'leg-walk-3',
+              type: 'walk',
+              title: '횡단보도 단차 낮춤 구간 → 목적지 도착',
+              subtitle: '단차 1.5cm 안전 통과',
+              description: '목적지 건물 1층 경사로와 직접 연결',
+              locationName: '목적지',
+            },
+          ],
         },
       ];
       setTransitOptions(options);
@@ -718,25 +961,58 @@ export default function App() {
   // Handle Obstacle/Accessibility Report submission
   const handleSubmitReport = (
     status: 'yes' | 'no',
-    nickname?: string,
-    issueType?: string
+    nickname: string,
+    issueType: string,
+    locationName: string,
+    coords: Coordinates,
+    description?: string
   ) => {
-    if (status === 'no' && !nickname?.trim()) {
-      showToast('아니요 선택 시 닉네임을 꼭 입력해주세요!');
-      return;
-    }
+    const newReport: ObstacleReport = {
+      id: `rep-${Date.now()}`,
+      latlng: coords,
+      locationName: locationName || '제보 위치',
+      status,
+      nickname: nickname || '익명 제보자',
+      issueType,
+      description,
+      timestamp: new Date().toISOString(),
+      likes: 1,
+    };
 
+    setReports((prev) => [newReport, ...prev]);
     setIsReportModalOpen(false);
-    showToast("<i class='fa-solid fa-check-circle text-green-400 mr-2'></i>제보가 성공적으로 접수되었습니다. 감사합니다!");
-    speak('제보가 접수되었습니다. 참여해 주셔서 감사합니다.');
 
-    if (currentCoords && mapRef.current) {
-      const issueText = status === 'no' ? issueType : '통행 원활함 (제보)';
-      L.marker(currentCoords, { icon: warnIcon, zIndexOffset: 800 })
-        .addTo(mapRef.current)
-        .bindPopup(`<b>${issueText}</b><br><span class="text-xs text-gray-500">실시간 사용자 제보</span>`)
-        .openPopup();
+    showToast("<i class='fa-solid fa-check-circle text-green-400 mr-2'></i>위치 지정 제보가 등록되었습니다. 감사합니다!");
+    speak(`${locationName}에 대한 제보가 성공적으로 등록되었습니다.`);
+
+    if (mapRef.current) {
+      mapRef.current.flyTo([coords.lat, coords.lng], 17, { animate: true, duration: 1 });
     }
+  };
+
+  // Fly to report position from "모아보기"
+  const handleFocusReportOnMap = (report: ObstacleReport) => {
+    if (!mapRef.current) return;
+    mapRef.current.flyTo([report.latlng.lat, report.latlng.lng], 18, { animate: true, duration: 1 });
+
+    const matchedMarker = reportMarkersRef.current.find((m) => {
+      const pos = m.getLatLng();
+      return Math.abs(pos.lat - report.latlng.lat) < 0.0001 && Math.abs(pos.lng - report.latlng.lng) < 0.0001;
+    });
+
+    if (matchedMarker) {
+      setTimeout(() => matchedMarker.openPopup(), 600);
+    }
+
+    speak(`${report.locationName} 제보 위치로 이동했습니다.`);
+  };
+
+  // Like a report
+  const handleLikeReport = (id: string) => {
+    setReports((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, likes: (r.likes || 0) + 1 } : r))
+    );
+    showToast('공감 표시가 등록되었습니다.');
   };
 
   // Compute count of active facilities by category
@@ -783,15 +1059,41 @@ export default function App() {
       {/* Map Element */}
       <div id="map" ref={mapContainerRef} className="w-full h-full" />
 
-      {/* Locate Me Floating Button */}
+      {/* Floating Action Control Stack on Map */}
       {!isNavigating && (
-        <button
-          onClick={() => getCurrentLocation(true)}
-          className="overlay-panel bottom-36 right-4 w-12 h-12 bg-white rounded-full shadow-[0_4px_12px_rgba(0,0,0,0.18)] flex items-center justify-center text-blue-600 text-xl active:bg-gray-100 transition z-[1001] border border-gray-100 hover:bg-gray-50"
-          title="내 위치 찾기"
-        >
-          <LocateFixed className="w-6 h-6" />
-        </button>
+        <div className="overlay-panel bottom-24 sm:bottom-28 right-4 flex flex-col gap-2.5 z-[1001] items-end">
+          {/* 제보 모아보기 Floating Button */}
+          <button
+            onClick={() => setIsReportListModalOpen(true)}
+            className="px-3.5 py-2.5 bg-gray-900 text-white rounded-2xl shadow-lg flex items-center gap-2 font-extrabold text-xs active:scale-95 transition border border-gray-700 hover:bg-gray-800"
+            title="시민 제보 모아보기"
+          >
+            <Megaphone className="w-4 h-4 text-amber-400" />
+            <span>제보 모아보기</span>
+            <span className="bg-amber-500 text-gray-950 text-[10px] font-black px-1.5 py-0.2 rounded-full shadow-2xs">
+              {reports.length}
+            </span>
+          </button>
+
+          {/* 위치선택 제보하기 Floating Button */}
+          <button
+            onClick={() => setIsReportModalOpen(true)}
+            className="px-3.5 py-2.5 bg-amber-500 text-white rounded-2xl shadow-lg flex items-center gap-2 font-extrabold text-xs active:scale-95 transition border border-amber-400 hover:bg-amber-600"
+            title="위치 지정 제보하기"
+          >
+            <i className="fa-solid fa-plus text-xs" />
+            <span>제보하기</span>
+          </button>
+
+          {/* Locate Me Floating Button */}
+          <button
+            onClick={() => getCurrentLocation(true)}
+            className="w-10 h-10 bg-white rounded-2xl shadow-md flex items-center justify-center text-blue-600 active:bg-gray-100 transition border border-gray-100 hover:bg-gray-50"
+            title="내 위치 찾기"
+          >
+            <LocateFixed className="w-5 h-5" />
+          </button>
+        </div>
       )}
 
       {/* Bottom Route Options Drawer */}
@@ -818,7 +1120,22 @@ export default function App() {
       <ReportModal
         isOpen={isReportModalOpen}
         onClose={() => setIsReportModalOpen(false)}
+        currentCoords={currentCoords ? { lat: currentCoords.lat, lng: currentCoords.lng } : null}
+        startCoords={startCoords ? { lat: startCoords.lat, lng: startCoords.lng } : null}
+        endCoords={endCoords ? { lat: endCoords.lat, lng: endCoords.lng } : null}
+        startName={startInput}
+        endName={endInput}
         onSubmitReport={handleSubmitReport}
+      />
+
+      {/* Report List Modal (모아보기) */}
+      <ReportListModal
+        isOpen={isReportListModalOpen}
+        onClose={() => setIsReportListModalOpen(false)}
+        reports={reports}
+        onFocusReportOnMap={handleFocusReportOnMap}
+        onLikeReport={handleLikeReport}
+        onOpenNewReport={() => setIsReportModalOpen(true)}
       />
 
       {/* Location Permission Guidance Modal */}

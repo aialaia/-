@@ -15,6 +15,25 @@ export interface AccessibilityFacility {
   slopeGrade?: 'gentle' | 'moderate' | 'steep'; // 완만 / 보통 / 급경사
 }
 
+export interface RouteLegStep {
+  id: string;
+  type: 'walk' | 'elevator' | 'braille' | 'transit_ride' | 'alight';
+  title: string;
+  subtitle?: string;
+  description?: string;
+  locationName?: string;
+  exitNumber?: string;
+  lineColor?: string;
+  transitLineName?: string;
+  passedStations?: string[];
+  wheelchairPosition?: string;
+  facilitiesIncluded?: {
+    elevatorName?: string;
+    elevatorStatus?: string;
+    brailleInfo?: string;
+  };
+}
+
 export interface TransitOption {
   id: string;
   type: 'subway' | 'bus' | 'walk';
@@ -30,15 +49,19 @@ export interface TransitOption {
   features: string[];
   arrivalTime?: string;
   facilities?: AccessibilityFacility[];
+  detailedLegs?: RouteLegStep[];
 }
 
 export interface ObstacleReport {
   id: string;
   latlng: Coordinates;
-  status: 'yes' | 'no';
+  locationName: string;
+  status: 'yes' | 'no'; // 'yes': 원활/개선됨, 'no': 불편/장애물
   nickname?: string;
   issueType?: string;
+  description?: string;
   timestamp: string;
+  likes?: number;
 }
 
 export interface RouteData {
