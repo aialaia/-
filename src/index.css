@@ -1,0 +1,52 @@
+@import "tailwindcss";
+@import "leaflet/dist/leaflet.css";
+
+/* Map Container full height */
+#map {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100vh;
+  width: 100vw;
+  z-index: 0;
+}
+
+.overlay-panel {
+  z-index: 1000;
+  position: absolute;
+}
+
+/* Prevent zoom on mobile text inputs */
+input[type="text"], select {
+  font-size: 16px !important;
+}
+
+/* Current location pulse marker */
+.pulse-marker {
+  background-color: #3b82f6;
+  border-radius: 50%;
+  border: 3px solid white;
+  box-shadow: 0 0 0 rgba(59, 130, 246, 0.4);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 15px rgba(59, 130, 246, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0);
+  }
+}
+
+/* Custom scrollbar */
+.hide-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.hide-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
